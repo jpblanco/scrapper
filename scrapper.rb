@@ -13,10 +13,8 @@ class App
 end
 
 def obtain_app_details(app)
-  print "#{app.name}   "
   url = app.url
-  prev_time = Time.now
-  doc = Nokogiri::HTML(%x(curl -s -X GET #{url} > "access.log"))
+  doc = Nokogiri::HTML(%x(curl -s -X GET #{url}))
 
   app.price = doc.css("dl.doc-metadata-list > dd:last-child").first.content
   downloads = doc.css("dl.doc-metadata-list > dd")[5].content.split(" - ")
@@ -24,15 +22,12 @@ def obtain_app_details(app)
   app.downloads_max = downloads[1].gsub(",","")
   app.downloads_avg = (app.downloads_min.to_i + app.downloads_max.to_i) / 2
   app.size = doc.css("dl.doc-metadata-list > dd")[6].content
-
-  print "(#{Time.now-prev_time} s)"
-  puts ""
 end
 
-def search(query, options ={})
-  page = 1
+def search(query, pages, options ={})
+  apps = []
   prev_time = Time.now
-  default_options = { :filter => "no_filter", :sort => "relevance" }
+  default_options = { :filter => "no_filter", :sort => "relevance"}
   default_options.merge(options)
 
   real_filters = { :free => "price=1",
@@ -42,20 +37,23 @@ def search(query, options ={})
   real_sort = { :relevance => "sort=1",
                 :popularity => "sort=0" }
 
-  url ="https://market.android.com/search?q=#{query}&c=apps&#{real_filters[default_options[:filter].to_sym]}&#{real_sort[default_options[:sort].to_sym]}"
-
   puts "Haciendo busqueda"
-  print "Pagina #{page}   "
-  doc = Nokogiri::HTML(%x(curl -s -X GET #{url} > "access.log"))
-  print "(#{Time.now-prev_time} s)"
   puts ""
 
-  apps = []
-  doc.css('div.details a.title').each do |link|
-    app = App.new
-    app.name = link["title"]
-    app.url = ANDROID_HOST + link["href"]
-    apps << app
+  (1..pages).each do |page|
+    url ="#{ANDROID_HOST}/search?q=#{query}&c=apps&#{real_filters[default_options[:filter].to_sym]}&#{real_sort[default_options[:sort].to_sym]}&start=#{(page-1)*12}&num=12"
+
+    print "Pagina #{page}   "
+    doc = Nokogiri::HTML(%x(curl -s -X GET #{url}))
+    print "(#{Time.now-prev_time} s)"
+    puts ""
+
+    doc.css('div.details a.title').each do |link|
+      app = App.new
+      app.name = link["title"]
+      app.url = ANDROID_HOST + link["href"]
+      apps << app
+    end
   end
 
   apps
@@ -65,20 +63,43 @@ end
 
 query = ARGV.first
 
-filter = nil
-sort = nil
+if query.nil?
+  puts "Lo estas haciendo mal!"
+  puts "Sintaxis: ruby scrapper.rb query --filter [free|paid] --sort [relevance|popularity]"
+else
+  filter = nil
+  sort = nil
+  pages = 5
+  start_time = Time.now
 
-filter = ARGV[(ARGV.index "--filter") + 1]  unless (ARGV.index "--filter").nil?
-sort = ARGV[(ARGV.index "--sort") + 1]  unless (ARGV.index "--sort").nil?
+  filter = ARGV[(ARGV.index "--filter") + 1]  unless (ARGV.index "--filter").nil?
+  sort = ARGV[(ARGV.index "--sort") + 1]  unless (ARGV.index "--sort").nil?
+  pages = ARGV[(ARGV.index "--pages") + 1].to_i  unless (ARGV.index "--pages").nil?
 
-apps = search(query, {:filter => filter, :sort => sort})
+  apps = search(query, pages, {:filter => filter, :sort => sort})
 
-
-
-open("#{query}-apps.csv", "a") { |f|
-  f.puts "Nombre,Url,Precio,DwnMin,DwnMax,DwnAvg,Espacio"
+  puts ""
+  puts "Obteniendo datos de las aplicaciones."
+  puts ""
 
   apps.each do |app|
-    f.puts "#{app.name},#{app.url},#{app.price},#{app.downloads_min},#{app.downloads_max},#{app.downloads_avg},#{app.size}"
+    print "#{app.name}   "
+    prev_time = Time.now
+    obtain_app_details app
+    print "(#{Time.now-prev_time} s)"
+    puts ""
   end
-}
+
+  open("#{query}-apps.csv", "a") { |f|
+    f.puts "Nombre,Url,Precio,DwnMin,DwnMax,DwnAvg,Espacio"
+
+    apps.each do |app|
+      f.puts "#{app.name},#{app.url},#{app.price},#{app.downloads_min},#{app.downloads_max},#{app.downloads_avg},#{app.size}"
+    end
+  }
+
+  puts ""
+  puts "Finalizado en #{Time.now - start_time} s"
+end
+
+
