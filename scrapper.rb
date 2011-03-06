@@ -43,19 +43,30 @@ def search(query, pages, options ={})
   (1..pages).each do |page|
     url ="#{ANDROID_HOST}/search?q=#{query}&c=apps&#{real_filters[default_options[:filter].to_sym]}&#{real_sort[default_options[:sort].to_sym]}&start=#{(page-1)*12}&num=12"
 
-    print "Pagina #{page}   "
+    #BUG: it seems I only get the same html for the different pages, no idea why.
     doc = Nokogiri::HTML(%x(curl -s -X GET #{url}))
+
+    no_results = !(doc.css(".no-results-section").empty?)
+
+    if no_results & (page == 1)
+      puts "No hay resultados para #{query}."
+      exit
+    end
+
+    print "Pagina #{page}   "
+
     print "(#{Time.now-prev_time} s)"
     puts ""
 
     doc.css('div.details a.title').each do |link|
-      app = App.new
-      app.name = link["title"]
-      app.url = ANDROID_HOST + link["href"]
-      apps << app
+      unless no_results
+        app = App.new
+        app.name = link["title"]
+        app.url = ANDROID_HOST + link["href"]
+        apps << app
+      end
     end
   end
-
   apps
 end
 
