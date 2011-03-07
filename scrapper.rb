@@ -18,17 +18,15 @@ def obtain_app_details(app)
 
   app.price = doc.css("dl.doc-metadata-list > dd:last-child").first.content
   downloads = doc.css("dl.doc-metadata-list > dd")[5].content.split(" - ")
-  app.downloads_min = downloads[0].gsub(",","")
-  app.downloads_max = downloads[1].gsub(",","")
+  app.downloads_min = downloads[0].gsub(/[,|.]/,"")
+  app.downloads_max = downloads[1].gsub(/[,|.]/,"")
   app.downloads_avg = (app.downloads_min.to_i + app.downloads_max.to_i) / 2
   app.size = doc.css("dl.doc-metadata-list > dd")[6].content
 end
 
-def search(query, pages, options ={})
+def search(query, options ={})
   apps = []
   prev_time = Time.now
-  default_options = { :filter => "no_filter", :sort => "relevance"}
-  default_options.merge(options)
 
   real_filters = { :free => "price=1",
                    :paid => "price=2",
@@ -37,11 +35,12 @@ def search(query, pages, options ={})
   real_sort = { :relevance => "sort=1",
                 :popularity => "sort=0" }
 
-  puts "Haciendo busqueda"
-  puts ""
+  print "Cargando "
 
-  (1..pages).each do |page|
+  (1..options[:pages]).each do |page|
     url ="#{ANDROID_HOST}/search?q=#{query}&c=apps&#{real_filters[default_options[:filter].to_sym]}&#{real_sort[default_options[:sort].to_sym]}&start=#{(page-1)*12}&num=12"
+    print url if page == 1 
+    puts ""
 
     #BUG: it seems I only get the same html for the different pages, no idea why.
     doc = Nokogiri::HTML(%x(curl -s -X GET #{url}))
